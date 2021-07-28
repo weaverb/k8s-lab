@@ -1,0 +1,127 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: Enable kernel modules
+    command: "{{ item }}"
+    with_items:
+    - modprobe overlay
+    - modprobe br_netfilter
+
+  - name: Setup containerd.conf
+    copy:
+      src: configs/containerd/containerd.conf
+      dest: /etc/modules-load.d/containerd.conf
+      mode: 0644
+
+  - name: Setup kubernetes-cri.conf
+    copy:
+      src: configs/containerd/99-kubernetes-cri.conf
+      dest: /etc/sysctl.d/99-kubernetes-cri.conf
+      mode: 0644
+
+  - name: Reload sysctl configs
+    command: sysctl --system
+
+  - name: Install containerd 
+    apt: 
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+      - containerd
+
+  - name: Create containerd directory
+    file:
+      path: /etc/containerd
+      state: directory
+      mode: 0755
+
+  - name: Setup containerd config 
+    copy:
+      src: configs/containerd/config.toml
+      dest: /etc/containerd/config.toml
+      mode: 0644
+
+  - name: Restart containerd and make sure its enabled
+    systemd:
+      state: restarted
+      daemon_reload: yes
+      name: containerd.service
+      enabled: yes
+
+  - name: Remove swapfile from /etc/fstab
+    mount:
+      name: "{{ item }}"
+      fstype: swap
+      state: absent
+    with_items:
+    - swap
+    - none
+
+  - name: Disable swap
+    command: swapoff -a
+    when: ansible_swaptotal_mb > 0
+
+  - name: Add apt signing key for kubernetes
+    apt_key: 
+      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+      state: present
+  
+  - name: Adding apt repos for kubernetes
+    apt_repository:
+      repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+      state: present
+      filename: kubernetes.list
+
+  - name: Install Kubelet, Kubeadm, and Kubectl
+    apt:
+      name: "{{ packages }}"
+      state: present
+      update_cache: yes
+    vars:
+      packages:
+      - kubelet=1.20.1-00
+      - kubeadm=1.20.1-00
+      - kubectl=1.20.1-00
+
+  - name: apt-mark hold packages to prevent unintentional upgrades
+    command: apt-mark hold kubelet kubeadm kubectl containerd
+
+  - name: Enable kubelet service
+    systemd:
+      name: kubelet.service
+      enabled: yes
+
+  - name: Copy cluster config to machine
+    copy:
+      src: configs/cluster/ClusterConfiguration.yaml
+      dest: /tmp/ClusterConfiguration.yaml
+      mode: 0644
+
+  - name: Initalize the cluster with kubeadm
+    command: kubeadm init --config=/tmp/ClusterConfiguration.yaml --cri-socket /run/containerd/containerd.sock
+
+  - name: Setup kubeconfig for vagrant user
+    command: "{{ item }}"
+    with_items:
+    - mkdir -p /home/vagrant/.kube
+    - cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
+    - chown vagrant:vagrant /home/vagrant/.kube/config
+
+  - name: Install Calico pod network
+    become: false
+    command: kubectl create -f https://docs.projectcalico.org/manifests/calico.yaml
+
+  - name: Generate kubeadm join command
+    command: kubeadm token create --print-join-command
+    register: join_command
+
+  - name: Copy join command to a file
+    delegate_to: localhost
+    become: false
+    become_user: "{{ lookup('env', 'USER') }}"
+    copy:
+      content: "{{ join_command.stdout_lines[0] }}"
+      dest: join-command
