@@ -12,7 +12,7 @@ This cluster is based on kubernetes 1.20.1 and uses containerd as the cri and ca
 
 ## Setup
 
-The Vagrantfile is configured to bootstrap the control plane on `192.168.50.10` and the thre nodes on `192.168.50.11 ..12 ..13`, etc. If you need to change that modify the Vagrantfile and change the `ClusterConfiguration.yml` file [HERE](https://github.com/weaverb/k8s-lab/blob/4a31a8c8961825675baef020fea73ca0891d13e3/k8s-setup/files/configs/cluster/ClusterConfiguration.yaml#L12) to match the control plane ip.
+The Vagrantfile is configured to bootstrap the control plane on `172.16.50.10` and the three nodes on `172.16.50.11 ..12 ..13`, etc. If you need to change that modify the Vagrantfile and change the `ClusterConfiguration.yml` file [HERE](https://github.com/weaverb/k8s-lab/blob/cd3ff6a14afc9b0521e82c163b67ad92a7f5845a/k8s-setup/files/configs/cluster/ClusterConfiguration.yaml#L12) to match the control plane ip.
 
 Run the `vagrant up` command to bootstrap the cluster.
 
